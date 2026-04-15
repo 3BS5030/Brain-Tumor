@@ -1,61 +1,67 @@
-# ======================
-# Stage 1: Build frontend
-# ======================
-FROM node:20 AS frontend
-
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
-
-COPY . .
-RUN npm run build
-
-# ======================
-# Stage 2: Main app
-# ======================
 FROM php:8.2-cli
 
-ENV APP_DIR=/app
-WORKDIR ${APP_DIR}
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl git \
-    libfreetype6-dev libjpeg62-turbo-dev libpng-dev \
-    libsqlite3-dev libzip-dev \
-    pkg-config python3 python3-venv sqlite3 supervisor unzip zip \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install bcmath exif gd pcntl pdo pdo_sqlite zip \
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    zip \
+    unzip \
+    python3 \
+    python3-pip \
+    python3-venv \
+    nginx \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+# Install PHP extensions
+RUN docker-php-ext-install pdo pdo_mysql mbstring exif pcntl bcmath gd
 
-COPY composer.json composer.lock ./
-RUN composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction --no-scripts
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
+# Set working directory
+WORKDIR /var/www
+
+# Copy project files
 COPY . .
 
-# Copy built frontend only (مش node_modules)
-COPY --from=frontend /app/public ./public
+# Install PHP dependencies
+RUN composer install --optimize-autoloader --no-dev
 
-# Python venv
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Install Node & build assets
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install \
+    && npm run build
 
-RUN pip install --upgrade pip \
-    && pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.6.0 \
-    && pip install --no-cache-dir -r app/Infrastructure/Prediction/Python/requirements.txt \
-    && mkdir -p storage/framework/cache \
-        storage/framework/sessions \
-        storage/framework/views \
-        storage/logs \
-        storage/app/public \
-        bootstrap/cache \
-    && chmod -R 775 storage bootstrap/cache
+# Install Python dependencies (if requirements.txt exists)
+RUN if [ -f "requirements.txt" ]; then \
+        python3 -m venv /venv && \
+        /venv/bin/pip install --upgrade pip && \
+        /venv/bin/pip install -r requirements.txt; \
+    fi
 
-COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY docker/start.sh /usr/local/bin/start-app
-RUN chmod +x /usr/local/bin/start-app
+# Set Python venv in PATH
+ENV PATH="/venv/bin:$PATH"
 
+# Laravel setup
+RUN cp .env.example .env || true
+RUN php artisan key:generate --force
+RUN mkdir -p storage/logs storage/framework/cache storage/framework/sessions storage/framework/views
+RUN chmod -R 775 storage bootstrap/cache
+
+# Configure Nginx
+RUN mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
+COPY docker/nginx.conf /etc/nginx/sites-available/default 2>/dev/null || true
+
+# Expose port
 EXPOSE 8080
-CMD ["/usr/local/bin/start-app"]
+
+# Start script
+COPY docker/start.sh /start.sh
+RUN chmod +x /start.sh
+
+CMD ["/start.sh"]
