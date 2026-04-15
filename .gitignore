@@ -30,5 +30,5 @@ __pycache__/
 *.pyc
 
 # AI uploads
-/public/storage/predictions/*
-/storage/app/public/predictions/*
+# /public/storage/predictions/*
+# /storage/app/public/predictions/*
