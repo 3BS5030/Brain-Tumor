@@ -3,10 +3,6 @@ set -eu
 
 cd /app
 
-if [ ! -f .env ] && [ -f .env.example ]; then
-    cp .env.example .env
-fi
-
 mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs storage/app/public bootstrap/cache
 
 if [ "${DB_CONNECTION:-sqlite}" = "sqlite" ]; then
@@ -15,7 +11,8 @@ if [ "${DB_CONNECTION:-sqlite}" = "sqlite" ]; then
 fi
 
 if [ -z "${APP_KEY:-}" ]; then
-    php artisan key:generate --force --no-interaction
+    echo "APP_KEY is not set. Add APP_KEY in Railway Variables before deploying."
+    exit 1
 fi
 
 php artisan package:discover --ansi --no-interaction
