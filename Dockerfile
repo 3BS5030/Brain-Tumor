@@ -12,7 +12,6 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
-    nginx \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -52,10 +51,6 @@ RUN cp .env.example .env || true
 RUN php artisan key:generate --force
 RUN mkdir -p storage/logs storage/framework/cache storage/framework/sessions storage/framework/views
 RUN chmod -R 775 storage bootstrap/cache
-
-# Configure Nginx
-RUN mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
-COPY docker/nginx.conf /etc/nginx/sites-available/default 2>/dev/null || true
 
 # Expose port
 EXPOSE 8080
