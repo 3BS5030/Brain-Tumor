@@ -37,7 +37,6 @@ COPY . .
 
 RUN npm run build \
     && pip3 install --no-cache-dir -r app/Infrastructure/Prediction/Python/requirements.txt \
-    && php artisan package:discover --ansi \
     && mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs storage/app/public bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
 

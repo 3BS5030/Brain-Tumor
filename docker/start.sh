@@ -18,6 +18,7 @@ if [ -z "${APP_KEY:-}" ]; then
     php artisan key:generate --force --no-interaction
 fi
 
+php artisan package:discover --ansi --no-interaction
 php artisan config:clear --no-interaction || true
 php artisan storage:link --no-interaction || true
 php artisan migrate --force --no-interaction
