@@ -9,9 +9,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfreetype6-dev \
     libjpeg62-turbo-dev \
     libpng-dev \
+    libsqlite3-dev \
     libzip-dev \
     nodejs \
     npm \
+    pkg-config \
     python3 \
     python3-pip \
     sqlite3 \
