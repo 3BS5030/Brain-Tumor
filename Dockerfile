@@ -43,6 +43,7 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 RUN pip install --upgrade pip \
+    && pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.6.0 \
     && pip install --no-cache-dir -r app/Infrastructure/Prediction/Python/requirements.txt \
     && mkdir -p storage/framework/cache \
         storage/framework/sessions \
