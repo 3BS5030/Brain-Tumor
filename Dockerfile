@@ -49,12 +49,15 @@ RUN if [ -f "requirements.txt" ]; then \
 # Set Python venv in PATH
 ENV PATH="/venv/bin:$PATH"
 
-# Laravel setup - create .env using printf to avoid multiline issues
+# Laravel setup - create .env
 RUN if [ -f ".env.example" ]; then \
         cp .env.example .env; \
     else \
         printf 'APP_NAME=Laravel\nAPP_ENV=production\nAPP_KEY=\nAPP_DEBUG=false\nAPP_URL=http://localhost\nLOG_CHANNEL=stderr\nLOG_LEVEL=error\nDB_CONNECTION=sqlite\nDB_DATABASE=/var/www/database/database.sqlite\nCACHE_DRIVER=file\nSESSION_DRIVER=file\nQUEUE_CONNECTION=sync\n' > .env; \
     fi
+
+# Generate APP_KEY directly into .env during build
+RUN php artisan key:generate --force
 
 # Create SQLite database file
 RUN mkdir -p database && touch database/database.sqlite
@@ -66,13 +69,6 @@ RUN mkdir -p storage/logs \
              storage/framework/views \
              bootstrap/cache \
     && chmod -R 777 storage bootstrap/cache
-
-# Generate app key
-RUN php artisan key:generate --force
-
-# Clear caches
-RUN php artisan config:clear
-RUN php artisan view:clear
 
 # Expose port
 EXPOSE 8080
