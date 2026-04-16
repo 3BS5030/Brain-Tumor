@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install PHP extensions including sqlite3
+# Install PHP extensions
 RUN docker-php-ext-install pdo pdo_mysql pdo_sqlite mbstring exif pcntl bcmath gd
 
 # Install Composer
@@ -49,19 +49,12 @@ RUN if [ -f "requirements.txt" ]; then \
 # Set Python venv in PATH
 ENV PATH="/venv/bin:$PATH"
 
-# Laravel setup - copy .env
-RUN cp .env.example .env 2>/dev/null || echo "APP_NAME=Laravel
-APP_ENV=production
-APP_KEY=
-APP_DEBUG=false
-APP_URL=http://localhost
-LOG_CHANNEL=stderr
-LOG_LEVEL=error
-DB_CONNECTION=sqlite
-DB_DATABASE=/var/www/database/database.sqlite
-CACHE_DRIVER=file
-SESSION_DRIVER=file
-QUEUE_CONNECTION=sync" > .env
+# Laravel setup - create .env using printf to avoid multiline issues
+RUN if [ -f ".env.example" ]; then \
+        cp .env.example .env; \
+    else \
+        printf 'APP_NAME=Laravel\nAPP_ENV=production\nAPP_KEY=\nAPP_DEBUG=false\nAPP_URL=http://localhost\nLOG_CHANNEL=stderr\nLOG_LEVEL=error\nDB_CONNECTION=sqlite\nDB_DATABASE=/var/www/database/database.sqlite\nCACHE_DRIVER=file\nSESSION_DRIVER=file\nQUEUE_CONNECTION=sync\n' > .env; \
+    fi
 
 # Create SQLite database file
 RUN mkdir -p database && touch database/database.sqlite
