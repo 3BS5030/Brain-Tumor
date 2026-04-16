@@ -1,4 +1,4 @@
-FROM php:8.2-fpm
+FROM php:8.2-cli
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     libonig-dev \
     libxml2-dev \
     libsqlite3-dev \
+    pkg-config \
     zip \
     unzip \
     python3 \
@@ -39,12 +40,11 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get purge -y nodejs \
     && apt-get autoremove -y
 
-# Install Python dependencies (if requirements.txt exists)
+# Install Python dependencies for the prediction service
 RUN python3 -m venv /venv
-RUN if [ -f "requirements.txt" ]; then \
-        /venv/bin/pip install --upgrade pip && \
-        /venv/bin/pip install -r requirements.txt; \
-    fi
+RUN /venv/bin/pip install --upgrade pip \
+    && /venv/bin/pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.6.0 \
+    && /venv/bin/pip install --no-cache-dir -r app/Infrastructure/Prediction/Python/requirements.txt
 
 # Set Python venv in PATH
 ENV PATH="/venv/bin:$PATH"
@@ -64,6 +64,7 @@ RUN mkdir -p database && touch database/database.sqlite
 
 # Set storage permissions
 RUN mkdir -p storage/logs \
+             storage/app/public \
              storage/framework/cache \
              storage/framework/sessions \
              storage/framework/views \
