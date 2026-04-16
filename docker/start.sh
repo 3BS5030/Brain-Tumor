@@ -1,27 +1,25 @@
-#!/bin/sh
-set -eu
+#!/bin/bash
+set -e
 
-cd /app
+cd /var/www
 
-mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs storage/app/public bootstrap/cache
+# Make sure SQLite file exists
+mkdir -p database
+touch database/database.sqlite
+chmod -R 777 storage bootstrap/cache
 
-if [ "${DB_CONNECTION:-sqlite}" = "sqlite" ]; then
-    export DB_DATABASE="${DB_DATABASE:-/app/storage/app/database.sqlite}"
-    touch "$DB_DATABASE"
+# If APP_KEY env var is set from Railway, update .env with it
+if [ -n "$APP_KEY" ]; then
+    sed -i "s|^APP_KEY=.*|APP_KEY=${APP_KEY}|" .env
 fi
 
-if [ -z "${APP_KEY:-}" ]; then
-    echo "APP_KEY is not set. Add APP_KEY in Railway Variables before deploying."
-    exit 1
-fi
+# Run migrations
+php artisan migrate --force
 
-php artisan package:discover --ansi --no-interaction
-php artisan config:clear --no-interaction || true
-php artisan storage:link --no-interaction || true
-php artisan migrate --force --no-interaction
+# Cache for production
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
 
-export BRAIN_TUMOR_SERVICE_URL="${BRAIN_TUMOR_SERVICE_URL:-http://127.0.0.1:5001}"
-export BRAIN_TUMOR_SERVICE_HOST="${BRAIN_TUMOR_SERVICE_HOST:-127.0.0.1}"
-export BRAIN_TUMOR_SERVICE_PORT="${BRAIN_TUMOR_SERVICE_PORT:-5001}"
-
-exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+echo "Starting Laravel on port 8080..."
+exec php artisan serve --host=0.0.0.0 --port=8080
