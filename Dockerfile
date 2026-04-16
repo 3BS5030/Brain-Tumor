@@ -1,4 +1,4 @@
-FROM php:8.2-cli
+FROM php:8.2-fpm
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     libonig-dev \
     libxml2-dev \
+    libsqlite3-dev \
     zip \
     unzip \
     python3 \
@@ -15,8 +16,8 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install PHP extensions
-RUN docker-php-ext-install pdo pdo_mysql mbstring exif pcntl bcmath gd
+# Install PHP extensions including sqlite3
+RUN docker-php-ext-install pdo pdo_mysql pdo_sqlite sqlite3 mbstring exif pcntl bcmath gd
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -28,17 +29,19 @@ WORKDIR /var/www
 COPY . .
 
 # Install PHP dependencies
-RUN composer install --optimize-autoloader --no-dev
+RUN composer install --optimize-autoloader --no-dev --no-interaction
 
 # Install Node & build assets
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
-    && npm install \
-    && npm run build
+    && npm ci \
+    && npm run build \
+    && apt-get purge -y nodejs \
+    && apt-get autoremove -y
 
 # Install Python dependencies (if requirements.txt exists)
+RUN python3 -m venv /venv
 RUN if [ -f "requirements.txt" ]; then \
-        python3 -m venv /venv && \
         /venv/bin/pip install --upgrade pip && \
         /venv/bin/pip install -r requirements.txt; \
     fi
@@ -46,11 +49,26 @@ RUN if [ -f "requirements.txt" ]; then \
 # Set Python venv in PATH
 ENV PATH="/venv/bin:$PATH"
 
-# Laravel setup
-RUN cp .env.example .env || true
+# Laravel setup - copy .env
+RUN cp .env.example .env
+
+# Create SQLite database file
+RUN mkdir -p database && touch database/database.sqlite
+
+# Set storage permissions
+RUN mkdir -p storage/logs \
+             storage/framework/cache \
+             storage/framework/sessions \
+             storage/framework/views \
+             bootstrap/cache \
+    && chmod -R 777 storage bootstrap/cache
+
+# Generate app key
 RUN php artisan key:generate --force
-RUN mkdir -p storage/logs storage/framework/cache storage/framework/sessions storage/framework/views
-RUN chmod -R 775 storage bootstrap/cache
+
+# Clear caches
+RUN php artisan config:clear
+RUN php artisan view:clear
 
 # Expose port
 EXPOSE 8080
