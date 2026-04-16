@@ -50,7 +50,18 @@ RUN if [ -f "requirements.txt" ]; then \
 ENV PATH="/venv/bin:$PATH"
 
 # Laravel setup - copy .env
-RUN cp .env.example .env
+RUN cp .env.example .env 2>/dev/null || echo "APP_NAME=Laravel
+APP_ENV=production
+APP_KEY=
+APP_DEBUG=false
+APP_URL=http://localhost
+LOG_CHANNEL=stderr
+LOG_LEVEL=error
+DB_CONNECTION=sqlite
+DB_DATABASE=/var/www/database/database.sqlite
+CACHE_DRIVER=file
+SESSION_DRIVER=file
+QUEUE_CONNECTION=sync" > .env
 
 # Create SQLite database file
 RUN mkdir -p database && touch database/database.sqlite
