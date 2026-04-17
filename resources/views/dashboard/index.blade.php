@@ -7,6 +7,13 @@
             <h2 class="h5">{{ __('messages.prediction_title') }}</h2>
             <p class="text-secondary small mb-4">{{ __('messages.prediction_subtitle') }}</p>
 
+            @if(session('prediction_error'))
+                <div class="alert alert-danger small" role="alert">
+                    <strong>Prediction failed:</strong>
+                    {{ session('prediction_error') }}
+                </div>
+            @endif
+
             <form id="scanForm" method="post" action="{{ route('dashboard.predict') }}" enctype="multipart/form-data" class="d-grid gap-3">
                 @csrf
                 <input id="scanInput" type="file" name="scan" class="form-control" accept=".jpg,.jpeg,.png" required>

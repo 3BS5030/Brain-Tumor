@@ -6,7 +6,9 @@ use App\Application\Prediction\UseCases\PredictBrainTumorForUser;
 use App\Domain\Prediction\Contracts\PredictionHistoryRepositoryInterface;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
+use Throwable;
 
 class DashboardController extends Controller
 {
@@ -30,9 +32,22 @@ class DashboardController extends Controller
             'scan' => ['required', 'image', 'mimes:jpg,jpeg,png', 'max:5120'],
         ]);
 
-        $path = $validated['scan']->store('predictions', 'public');
+        try {
+            $path = $validated['scan']->store('predictions', 'public');
+            $prediction = $useCase->execute((int) $request->user()->id, $path);
+        } catch (Throwable $exception) {
+            Log::error('Brain tumor prediction request failed.', [
+                'user_id' => $request->user()?->id,
+                'filename' => $validated['scan']->getClientOriginalName(),
+                'message' => $exception->getMessage(),
+                'trace' => $exception->getTraceAsString(),
+            ]);
 
-        $prediction = $useCase->execute((int) $request->user()->id, $path);
+            return redirect()
+                ->route('dashboard.index')
+                ->withInput()
+                ->with('prediction_error', $exception->getMessage());
+        }
 
         return redirect()
             ->route('dashboard.index')
