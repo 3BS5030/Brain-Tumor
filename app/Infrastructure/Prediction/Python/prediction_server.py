@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import os
 from typing import Any
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -16,6 +17,7 @@ from PIL import Image
 MODEL = None
 CLASS_LABELS = ['Glioma', 'Meningioma', 'No Tumor', 'Pituitary']
 IMAGE_SIZE = 224
+BASE_DIR = Path(__file__).resolve().parent
 
 
 # =========================
@@ -74,20 +76,25 @@ def prepare_image(image_bytes: bytes, size: int) -> np.ndarray:
 # LOAD MODEL
 # =========================
 def load_model(model_path: str):
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(f'Model not found: {model_path}')
+    resolved_model_path = Path(model_path)
+
+    if not resolved_model_path.is_absolute():
+        resolved_model_path = BASE_DIR / resolved_model_path
+
+    if not resolved_model_path.exists():
+        raise FileNotFoundError(f'Model not found: {resolved_model_path}')
 
     device = torch.device('cpu')
 
     try:
         # TorchScript
-        model = torch.jit.load(model_path, map_location=device)
+        model = torch.jit.load(str(resolved_model_path), map_location=device)
         model.eval()
         print("✅ Loaded TorchScript model")
         return model
     except Exception:
         # state_dict
-        state_dict = torch.load(model_path, map_location=device)
+        state_dict = torch.load(str(resolved_model_path), map_location=device)
 
         model = TumorClassifier(num_classes=4)
         model.load_state_dict(state_dict)
@@ -171,9 +178,10 @@ def bootstrap():
 def main():
     bootstrap()
     app = create_app()
-    app.run(host='127.0.0.1', port=5001)
+    host = os.getenv('BRAIN_TUMOR_SERVICE_HOST', '127.0.0.1')
+    port = int(os.getenv('BRAIN_TUMOR_SERVICE_PORT', '5001'))
+    app.run(host=host, port=port)
 
 
 if __name__ == '__main__':
     main()
-

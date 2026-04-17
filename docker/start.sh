@@ -26,6 +26,7 @@ php artisan storage:link || true
 export BRAIN_TUMOR_SERVICE_URL="${BRAIN_TUMOR_SERVICE_URL:-http://127.0.0.1:5001}"
 export BRAIN_TUMOR_SERVICE_HOST="${BRAIN_TUMOR_SERVICE_HOST:-127.0.0.1}"
 export BRAIN_TUMOR_SERVICE_PORT="${BRAIN_TUMOR_SERVICE_PORT:-5001}"
+export MODEL_PATH="${MODEL_PATH:-app/Infrastructure/Prediction/Python/best_model.pth}"
 
 echo "Starting Python prediction service on port ${BRAIN_TUMOR_SERVICE_PORT}..."
 /venv/bin/python app/Infrastructure/Prediction/Python/prediction_server.py &
