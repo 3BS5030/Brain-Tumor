@@ -171,7 +171,7 @@ def create_app() -> Flask:
 def bootstrap():
     global MODEL
 
-    model_path = os.getenv('MODEL_PATH', 'best_model.pth')
+    model_path = os.getenv('BRAIN_TUMOR_MODEL_PATH') or os.getenv('MODEL_PATH', 'best_model.pth')
     MODEL = load_model(model_path)
 
 
