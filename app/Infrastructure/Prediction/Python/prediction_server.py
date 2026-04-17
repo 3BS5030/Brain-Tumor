@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import json
 import os
 from typing import Any
 
@@ -11,34 +10,47 @@ import torch.nn as nn
 from flask import Flask, jsonify, request
 from PIL import Image
 
+# =========================
+# GLOBALS
+# =========================
 MODEL = None
-CLASS_LABELS: list[str] = []
-IMAGE_SIZE = 150
+CLASS_LABELS = ['Glioma', 'Meningioma', 'No Tumor', 'Pituitary']
+IMAGE_SIZE = 224
 
 
-class BrainTumorCNN(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
+# =========================
+# ✅ EXACT TumorClassifier (FROM KAGGLE)
+# =========================
+class TumorClassifier(nn.Module):
+    def __init__(self, num_classes):
+        super(TumorClassifier, self).__init__()
+
         self.features = nn.Sequential(
             nn.Conv2d(3, 16, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+
             nn.Conv2d(16, 32, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2)
         )
+
         self.classifier = nn.Sequential(
             nn.Linear(32 * 56 * 56, 128),
-            nn.ReLU(),
-            nn.Linear(128, 4),
+            nn.ReLU(inplace=True),
+            nn.Linear(128, num_classes)
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
         x = self.features(x)
-        x = torch.flatten(x, 1)
-        return self.classifier(x)
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+        return x
 
 
+# =========================
+# UTILS
+# =========================
 def softmax(x: np.ndarray) -> np.ndarray:
     exp_x = np.exp(x - np.max(x))
     return exp_x / exp_x.sum(axis=-1, keepdims=True)
@@ -46,50 +58,69 @@ def softmax(x: np.ndarray) -> np.ndarray:
 
 def prepare_image(image_bytes: bytes, size: int) -> np.ndarray:
     image = Image.open(io.BytesIO(image_bytes)).convert('RGB').resize((size, size))
+
     image_array = np.asarray(image, dtype=np.float32) / 255.0
+
+    # ✅ SAME normalization as Kaggle
+    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+    image_array = ((image_array - mean) / std).astype(np.float32, copy=False)
+
     chw = np.transpose(image_array, (2, 0, 1))
     return np.expand_dims(chw, axis=0)
 
 
-def load_model(model_path: str) -> Any:
+# =========================
+# LOAD MODEL
+# =========================
+def load_model(model_path: str):
     if not os.path.exists(model_path):
         raise FileNotFoundError(f'Model not found: {model_path}')
 
     device = torch.device('cpu')
+
     try:
+        # TorchScript
         model = torch.jit.load(model_path, map_location=device)
         model.eval()
+        print("✅ Loaded TorchScript model")
         return model
     except Exception:
+        # state_dict
         state_dict = torch.load(model_path, map_location=device)
-        if not isinstance(state_dict, dict):
-            raise RuntimeError('Unsupported .pth format: expected TorchScript or state_dict.')
 
-        model = BrainTumorCNN()
-        model.load_state_dict(state_dict, strict=True)
+        model = TumorClassifier(num_classes=4)
+        model.load_state_dict(state_dict)
         model.eval()
+
+        print("✅ Loaded state_dict model")
         return model
 
 
+# =========================
+# PREDICT
+# =========================
 def predict(image_bytes: bytes) -> dict[str, Any]:
     image_batch = prepare_image(image_bytes, IMAGE_SIZE)
 
     with torch.no_grad():
-        tensor = torch.from_numpy(image_batch)
+        tensor = torch.from_numpy(image_batch).float()
         outputs = MODEL(tensor)
+
         if isinstance(outputs, (list, tuple)):
             outputs = outputs[0]
+
         logits = outputs.detach().cpu().numpy()[0]
 
     probabilities = softmax(logits)
     predicted_index = int(np.argmax(probabilities))
 
-    predicted_label = CLASS_LABELS[predicted_index] if predicted_index < len(CLASS_LABELS) else str(predicted_index)
+    predicted_label = CLASS_LABELS[predicted_index]
 
-    scores: dict[str, float] = {}
-    for idx, score in enumerate(probabilities):
-        label = CLASS_LABELS[idx] if idx < len(CLASS_LABELS) else str(idx)
-        scores[label] = float(score)
+    scores = {
+        CLASS_LABELS[i]: float(probabilities[i])
+        for i in range(len(CLASS_LABELS))
+    }
 
     return {
         'predicted_label': predicted_label,
@@ -98,48 +129,49 @@ def predict(image_bytes: bytes) -> dict[str, Any]:
     }
 
 
+# =========================
+# FLASK APP
+# =========================
 def create_app() -> Flask:
     app = Flask(__name__)
 
     @app.get('/health')
-    def health() -> Any:
+    def health():
         return jsonify({'status': 'ok'})
 
     @app.post('/predict')
-    def predict_endpoint() -> Any:
+    def predict_endpoint():
         if 'scan' not in request.files:
             return jsonify({'error': 'Missing file field: scan'}), 400
 
-        scan = request.files['scan']
-        image_bytes = scan.read()
+        image_bytes = request.files['scan'].read()
+
         if not image_bytes:
-            return jsonify({'error': 'Empty image file'}), 400
+            return jsonify({'error': 'Empty image'}), 400
 
         try:
             result = predict(image_bytes)
             return jsonify(result)
-        except Exception as exc:
-            return jsonify({'error': str(exc)}), 500
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
     return app
 
 
-def bootstrap() -> None:
-    global MODEL, CLASS_LABELS, IMAGE_SIZE
+# =========================
+# BOOTSTRAP
+# =========================
+def bootstrap():
+    global MODEL
 
-    model_path = os.getenv('BRAIN_TUMOR_MODEL_PATH', os.path.join(os.path.dirname(__file__), 'best_model.pth'))
-    IMAGE_SIZE = int(os.getenv('BRAIN_TUMOR_IMAGE_SIZE', '224'))
-    CLASS_LABELS = [x.strip() for x in os.getenv('BRAIN_TUMOR_CLASS_LABELS', 'glioma,meningioma,notumor,pituitary').split(',') if x.strip()]
-
+    model_path = os.getenv('MODEL_PATH', 'best_model.pth')
     MODEL = load_model(model_path)
 
 
-def main() -> None:
+def main():
     bootstrap()
     app = create_app()
-    host = os.getenv('BRAIN_TUMOR_SERVICE_HOST', '127.0.0.1')
-    port = int(os.getenv('BRAIN_TUMOR_SERVICE_PORT', '5001'))
-    app.run(host=host, port=port)
+    app.run(host='127.0.0.1', port=5001)
 
 
 if __name__ == '__main__':
